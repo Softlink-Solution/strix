@@ -75,7 +75,54 @@ Protected target testing capabilities:
 - **Rate Management**: Intelligent rate limiting and timing analysis
 - **Callback Infrastructure**: HTTP/DNS callback handling
 
-## 3. PII Hygiene & Data Safety
+## 3. Specialized Domain Skill Packs
+
+### Active Directory Security (`strix/skills/ad/`)
+
+Comprehensive AD security assessment:
+- **Domain Enumeration**: LDAP queries, BloodHound integration, privilege escalation paths
+- **Kerberos Attacks**: Kerberoasting, AS-REP roasting, delegation abuse
+- **SMB Enumeration**: Share analysis, signing requirements, lateral movement
+- **Trust Analysis**: Domain trust mapping, inter-forest analysis
+- **Safety Controls**: Read-only operations, local lab restrictions
+
+### Mobile Security (`strix/skills/mobile/`)
+
+Mobile application static analysis:
+- **Android Analysis**: APK decompilation, manifest analysis, hardcoded secrets detection
+- **iOS Analysis**: IPA extraction, Info.plist analysis, entitlements assessment
+- **Storage Security**: Insecure storage detection, keychain analysis
+- **Network Security**: SSL/TLS analysis, certificate pinning, ATS configuration
+- **Cryptography**: Weak algorithm detection, secure storage recommendations
+
+### Cloud Security (`strix/skills/cloud/`)
+
+Multi-cloud security posture assessment:
+- **AWS Security**: S3 bucket analysis, IAM privilege assessment, metadata service abuse
+- **Azure Security**: Blob storage analysis, Azure AD assessment, managed identity abuse
+- **GCP Security**: Cloud Storage analysis, IAM posture, service account abuse
+- **Network Security**: Security group analysis, firewall rules, VPC configurations
+- **Read-Only Analysis**: Comprehensive cloud security assessment without resource modification
+
+### IoT & Firmware Security (`strix/skills/iot/`)
+
+Embedded device security analysis:
+- **Firmware Extraction**: Binwalk-based unpacking, filesystem identification
+- **Filesystem Analysis**: Permission analysis, sensitive file identification
+- **Credential Discovery**: Hardcoded credential detection, key management analysis
+- **Cryptographic Analysis**: Weak algorithm detection, key strength assessment
+- **Web Interface Analysis**: Web server configuration, common vulnerability detection
+
+### DFIR & Threat Hunting (`strix/skills/dfir/`)
+
+Digital forensics and incident response:
+- **Windows Event Logs**: Security event analysis, privilege escalation detection
+- **Linux Auth Logs**: Authentication analysis, sudo usage monitoring
+- **Web Server Logs**: SQL injection detection, XSS attempts, brute force detection
+- **MITRE ATT&CK Mapping**: Framework integration, technique identification
+- **Threat Hunting**: Hypothesis-based hunting, timeline construction
+
+## 4. PII Hygiene & Data Safety
 
 ### PII Detection & Masking (`strix/core/pii_guard.py`)
 
@@ -93,7 +140,7 @@ Comprehensive PII protection system:
 - **Report Generation**: Automatic PII sanitization in reports
 - **Logging**: Safe logging with automatic truncation and masking
 
-## 4. Local Evidence Vault & Enhanced Reporting
+## 5. Local Evidence Vault & Enhanced Reporting
 
 ### Evidence Vault Management (`strix/core/evidence_vault.py`)
 
@@ -115,7 +162,7 @@ Enterprise-ready reporting features:
 - **Remediation Roadmap**: Prioritized remediation guidance
 - **Enterprise Format**: Professional structure with clear action items
 
-## 5. Backward Compatibility
+## 6. Backward Compatibility
 
 All customizations maintain full backward compatibility:
 
@@ -125,7 +172,7 @@ All customizations maintain full backward compatibility:
 - **Existing CLI**: All existing CLI commands work without modification
 - **Existing Skills**: Original skill files remain unchanged
 
-## Configuration Examples
+## 7. Configuration Examples
 
 ### Local Lab Mode (Full Authority)
 ```bash
@@ -150,7 +197,7 @@ export STRIX_EVIDENCE_VAULT_PATH="~/security-evidence"
 strix --target https://example.com --evidence-vault ~/custom-vault
 ```
 
-## File Structure
+## 8. File Structure
 
 ```
 strix/
@@ -166,10 +213,24 @@ strix/
 ├── report/
 │   └── writer.py                    # MODIFIED: Enhanced reporting functions
 └── skills/
-    └── vulnerabilities/
-        ├── business_logic_advanced.md    # NEW: Advanced business logic testing
-        ├── agentic_self_correction.md    # NEW: Self-correction loop
-        └── public_target_waf_oob.md      # NEW: WAF & OOB validation
+    ├── vulnerabilities/
+    │   ├── business_logic_advanced.md    # NEW: Advanced business logic testing
+    │   ├── agentic_self_correction.md    # NEW: Self-correction loop
+    │   └── public_target_waf_oob.md      # NEW: WAF & OOB validation
+    ├── ad/
+    │   ├── domain_enumeration.md         # NEW: AD domain enumeration
+    │   └── kerberos_attacks.md           # NEW: Kerberos attack methodologies
+    ├── mobile/
+    │   ├── android_analysis.md           # NEW: Android app analysis
+    │   └── ios_analysis.md               # NEW: iOS app analysis
+    ├── cloud/
+    │   ├── aws_security.md               # NEW: AWS security assessment
+    │   ├── azure_security.md             # NEW: Azure security assessment
+    │   └── gcp_security.md               # NEW: GCP security assessment
+    ├── iot/
+    │   └── firmware_analysis.md          # NEW: IoT firmware analysis
+    └── dfir/
+        └── log_analysis.md               # NEW: DFIR log analysis
 ```
 
 ## Testing and Validation
@@ -182,7 +243,18 @@ All new Python modules have been syntax-validated:
 - `strix/core/execution.py` ✓
 - `strix/interface/cli_args.py` ✓
 
-## Usage Examples
+All new skill packs include comprehensive methodology documentation:
+- `strix/skills/ad/domain_enumeration.md` ✓
+- `strix/skills/ad/kerberos_attacks.md` ✓
+- `strix/skills/mobile/android_analysis.md` ✓
+- `strix/skills/mobile/ios_analysis.md` ✓
+- `strix/skills/cloud/aws_security.md` ✓
+- `strix/skills/cloud/azure_security.md` ✓
+- `strix/skills/cloud/gcp_security.md` ✓
+- `strix/skills/iot/firmware_analysis.md` ✓
+- `strix/skills/dfir/log_analysis.md` ✓
+
+## 9. Usage Examples
 
 ### Basic Usage (Backward Compatible)
 ```bash
@@ -205,15 +277,18 @@ strix --target https://api.example.com \
       --require-scope-confirmation
 ```
 
-## Security Considerations
+## 10. Security Considerations
 
 1. **Authorization Only**: New features emphasize testing only authorized targets
 2. **Rate Limiting**: Built-in protections against excessive requests
 3. **PII Protection**: Automatic detection and masking of sensitive data
 4. **Audit Trail**: Comprehensive logging of all security operations
 5. **Safe Defaults**: Conservative defaults for public target mode
+6. **Local Lab Restriction**: Specialized skill packs restricted to authorized local lab environments
+7. **Read-Only Analysis**: All specialized analysis operations are read-only
+8. **Safety Validation**: Comprehensive safety validation for each domain skill pack
 
-## Future Enhancements
+## 11. Future Enhancements
 
 Potential areas for future expansion:
 - Additional PII detection patterns
@@ -224,4 +299,4 @@ Potential areas for future expansion:
 
 ## Conclusion
 
-These customizations transform Strix into an enterprise-grade security testing platform while maintaining its core strengths: autonomous multi-agent testing, comprehensive vulnerability coverage, and flexible deployment options. The dual-environment governance model ensures appropriate controls for both internal lab testing and authorized public target assessment.
+These customizations transform Strix into an enterprise-grade security testing platform while maintaining its core strengths: autonomous multi-agent testing, comprehensive vulnerability coverage, and flexible deployment options. The dual-environment governance model ensures appropriate controls for both internal lab testing and authorized public target assessment. The addition of specialized domain skill packs extends Strix's capabilities across the full spectrum of advanced security testing, from Active Directory and mobile security to cloud posture assessment, IoT firmware analysis, and DFIR threat hunting.
