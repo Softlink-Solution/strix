@@ -254,7 +254,7 @@ All new skill packs include comprehensive methodology documentation:
 - `strix/skills/iot/firmware_analysis.md` ✓
 - `strix/skills/dfir/log_analysis.md` ✓
 
-## 9. Usage Examples
+## 10. Usage Examples
 
 ### Basic Usage (Backward Compatible)
 ```bash
@@ -277,7 +277,7 @@ strix --target https://api.example.com \
       --require-scope-confirmation
 ```
 
-## 10. Security Considerations
+## 11. Security Considerations
 
 1. **Authorization Only**: New features emphasize testing only authorized targets
 2. **Rate Limiting**: Built-in protections against excessive requests
@@ -288,7 +288,7 @@ strix --target https://api.example.com \
 7. **Read-Only Analysis**: All specialized analysis operations are read-only
 8. **Safety Validation**: Comprehensive safety validation for each domain skill pack
 
-## 11. Future Enhancements
+## 12. Future Enhancements
 
 Potential areas for future expansion:
 - Additional PII detection patterns
@@ -297,6 +297,6 @@ Potential areas for future expansion:
 - Integration with enterprise SIEM systems
 - Advanced correlation and analysis features
 
-## Conclusion
+## 13. Conclusion
 
 These customizations transform Strix into an enterprise-grade security testing platform while maintaining its core strengths: autonomous multi-agent testing, comprehensive vulnerability coverage, and flexible deployment options. The dual-environment governance model ensures appropriate controls for both internal lab testing and authorized public target assessment. The addition of specialized domain skill packs extends Strix's capabilities across the full spectrum of advanced security testing, from Active Directory and mobile security to cloud posture assessment, IoT firmware analysis, and DFIR threat hunting.
