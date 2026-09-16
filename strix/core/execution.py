@@ -7,6 +7,7 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import cache
 from typing import TYPE_CHECKING, Any, cast
 
@@ -20,12 +21,28 @@ from openai import (
 )
 
 from strix.config import codex
+from strix.core.evidence_vault import EvidenceVault, get_vault_manager
+from strix.core.governance import (
+    EnvironmentModeError,
+    GovernanceError,
+    GovernanceManager,
+    RateLimitExceededError,
+    ScopeAuthorizationError,
+    get_governance_manager,
+)
 from strix.core.hooks import (
     BudgetExceededError,
     BudgetPausedError,
     SubagentBudgetReservedError,
 )
 from strix.core.inputs import child_initial_input
+from strix.core.pii_guard import (
+    DataSafetyGuard,
+    PIIDetectionError,
+    SafetyInterceptor,
+    get_data_safety_guard,
+    get_safety_interceptor,
+)
 from strix.core.sessions import (
     enforce_image_budget,
     open_agent_session,
@@ -198,6 +215,36 @@ async def run_agent_loop(
     event_sink: StreamEventSink | None = None,
     hooks: RunHooks[dict[str, Any]] | None = None,
 ) -> RunResultBase | None:
+    # Initialize governance checks
+    governance = get_governance_manager()
+    targets = context.get("targets", [])
+    if targets:
+        for target in targets:
+            try:
+                governance.check_target_authorization(str(target))
+                governance.log_operation("target_authorization", str(target), "Agent loop initialization")
+            except GovernanceError as exc:
+                logger.warning("Governance check failed for target %s: %s", target, exc)
+                if not interactive:
+                    await coordinator.set_status(agent_id, "failed", error=str(exc))
+                    raise
+
+    # Initialize evidence vault for this engagement
+    vault_manager = get_vault_manager()
+    engagement_name = context.get("scan_id", "unknown")
+    primary_target = str(targets[0]) if targets else "unknown"
+    evidence_vault = vault_manager.create_vault(engagement_name, primary_target)
+
+    # Store engagement metadata
+    vault_metadata = {
+        "agent_id": agent_id,
+        "engagement_name": engagement_name,
+        "targets": [str(t) for t in targets],
+        "start_time": datetime.now(UTC).isoformat(),
+        "environment_mode": governance.environment_mode,
+    }
+    evidence_vault.store_metadata("engagement_info", vault_metadata)
+
     await coordinator.attach_runtime(
         agent_id,
         session=session,
@@ -236,6 +283,7 @@ async def run_agent_loop(
                 interactive=interactive,
                 event_sink=event_sink,
                 hooks=hooks,
+                governance=governance,
             )
 
     if not interactive:
@@ -321,6 +369,22 @@ async def spawn_child_agent(
     parent_id = parent_ctx.get("agent_id")
     if not isinstance(parent_id, str):
         raise TypeError("Parent agent_id missing from context")
+
+    # Governance check for child agent operations
+    try:
+        governance = get_governance_manager()
+        # Check if the operation type is allowed based on skills
+        for skill in skills:
+            if "container" in skill.lower() or "escape" in skill.lower():
+                governance.check_operation_allowed("container_escape")
+            if "script" in skill.lower() or "custom" in skill.lower():
+                governance.check_operation_allowed("custom_script")
+            if "fuzz" in skill.lower() or "brute" in skill.lower():
+                governance.check_operation_allowed("aggressive_fuzzing")
+    except EnvironmentModeError as exc:
+        logger.warning("Governance check failed for child agent %s: %s", name, exc)
+        if not interactive:
+            raise
 
     child_id = uuid.uuid4().hex[:8]
     child_agent = factory(name=name, skills=skills)
@@ -462,6 +526,7 @@ async def _run_until_lifecycle(
     interactive: bool,
     event_sink: StreamEventSink | None,
     hooks: RunHooks[dict[str, Any]] | None,
+    governance: GovernanceManager | None = None,
 ) -> RunResultBase | None:
     """Drive an agent until an explicit lifecycle tool settles its status.
 
@@ -495,6 +560,7 @@ async def _run_until_lifecycle(
                 session=session,
                 event_sink=event_sink,
                 hooks=hooks,
+                governance=governance,
             )
         else:
             result = await _run_cycle(
@@ -509,6 +575,7 @@ async def _run_until_lifecycle(
                 interactive=False,
                 event_sink=event_sink,
                 hooks=hooks,
+                governance=governance,
             )
 
         status = await _agent_status(coordinator, agent_id)
@@ -616,6 +683,7 @@ async def _run_cycle_parked(
     session: Session | None,
     event_sink: StreamEventSink | None,
     hooks: RunHooks[dict[str, Any]] | None,
+    governance: GovernanceManager | None = None,
 ) -> RunResultBase | None:
     """Interactive run cycle that parks on any error instead of killing the runner."""
     try:
@@ -631,6 +699,7 @@ async def _run_cycle_parked(
             interactive=True,
             event_sink=event_sink,
             hooks=hooks,
+            governance=governance,
         )
     except (BudgetExceededError, BudgetPausedError, SubagentBudgetReservedError):
         raise
@@ -654,15 +723,32 @@ async def _run_cycle(  # noqa: PLR0912, PLR0915
     interactive: bool,
     event_sink: StreamEventSink | None,
     hooks: RunHooks[dict[str, Any]] | None,
+    governance: GovernanceManager | None = None,
 ) -> RunResultBase | None:
     image_strips = 0
     compactions = 0
     model_retries = 0
+    governance = governance or get_governance_manager()
+    safety_interceptor = get_safety_interceptor()
+    data_safety_guard = get_data_safety_guard()
     while True:
         stream: Any = None
         pre_run_items: list[Any] = []
         try:
             await coordinator.mark_running(agent_id)
+
+            # Rate limiting check for public target mode
+            targets = context.get("targets", [])
+            if targets and governance and governance.is_public_target:
+                for target in targets:
+                    try:
+                        governance.check_rate_limit(str(target))
+                    except RateLimitExceededError as exc:
+                        logger.warning("Rate limit exceeded for %s: %s", target, exc)
+                        if not interactive:
+                            await coordinator.set_status(agent_id, "stopped", error=str(exc))
+                            raise
+
             if session is not None:
                 max_images = context.get("max_context_images")
                 if isinstance(max_images, int):
@@ -698,6 +784,30 @@ async def _run_cycle(  # noqa: PLR0912, PLR0915
                         raise stream.run_loop_exception
                     if refusal := _structured_provider_refusal(stream):
                         raise ProviderRefusalError(refusal)
+
+                    # Apply PII safety checks to any output data
+                    try:
+                        if hasattr(stream, 'final_output') and stream.final_output:
+                            safety_check = data_safety_guard.check_data_safety(
+                                {"output": str(stream.final_output)}
+                            )
+                            if not safety_check[0] and data_safety_guard.should_halt_execution(
+                                {"output": str(stream.final_output)}
+                            ):
+                                logger.warning(
+                                    "PII safety check failed in agent %s output: %s",
+                                    agent_id,
+                                    safety_check[1]
+                                )
+                                if not interactive:
+                                    await coordinator.set_status(
+                                        agent_id, "stopped", error=safety_check[1]
+                                    )
+                                    raise PIIDetectionError(safety_check[1])
+                    except PIIDetectionError:
+                        raise
+                    except Exception as pii_exc:
+                        logger.warning("PII check error for %s: %s", agent_id, pii_exc)
                 except (BudgetExceededError, BudgetPausedError, SubagentBudgetReservedError):
                     raise
                 except RuntimeError as stream_exc:

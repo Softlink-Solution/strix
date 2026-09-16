@@ -173,6 +173,72 @@ class ViewerSettings(BaseSettings):
     app_url: str = Field(default="https://app.strix.ai", alias="STRIX_APP_URL")
 
 
+EnvironmentMode = Literal["local_lab", "public_target"]
+
+
+class GovernanceSettings(BaseSettings):
+    model_config = _BASE_CONFIG
+
+    environment_mode: EnvironmentMode = Field(
+        default="local_lab",
+        alias="STRIX_ENVIRONMENT_MODE",
+        description=(
+            "Operating mode: 'local_lab' for full authority testing, "
+            "'public_target' for strict rate-limited validation"
+        ),
+    )
+    require_scope_confirmation: bool = Field(
+        default=True,
+        alias="STRIX_REQUIRE_SCOPE_CONFIRMATION",
+        description="Require explicit scope confirmation before testing any asset",
+    )
+    public_target_rate_limit_min: int = Field(
+        default=2,
+        alias="STRIX_PUBLIC_RATE_LIMIT_MIN",
+        description="Minimum rate limit requests per second for public targets",
+    )
+    public_target_rate_limit_max: int = Field(
+        default=5,
+        alias="STRIX_PUBLIC_RATE_LIMIT_MAX",
+        description="Maximum rate limit requests per second for public targets",
+    )
+    local_lab_allow_container_escape: bool = Field(
+        default=True,
+        alias="STRIX_LOCAL_LAB_ALLOW_CONTAINER_ESCAPE",
+        description="Allow container escape techniques in local lab mode",
+    )
+    local_lab_allow_custom_scripts: bool = Field(
+        default=True,
+        alias="STRIX_LOCAL_LAB_ALLOW_CUSTOM_SCRIPTS",
+        description="Allow custom script execution in local lab mode",
+    )
+    local_lab_aggressive_fuzzing: bool = Field(
+        default=True,
+        alias="STRIX_LOCAL_LAB_AGGRESSIVE_FUZZING",
+        description="Enable aggressive fuzzing techniques in local lab mode",
+    )
+    authorized_targets: list[str] = Field(
+        default_factory=list,
+        alias="STRIX_AUTHORIZED_TARGETS",
+        description="List of pre-authorized targets for public target mode",
+    )
+    evidence_vault_path: str = Field(
+        default="~/local-sec-vault",
+        alias="STRIX_EVIDENCE_VAULT_PATH",
+        description="Base path for local evidence vault storage",
+    )
+    pii_detection_enabled: bool = Field(
+        default=True,
+        alias="STRIX_PII_DETECTION_ENABLED",
+        description="Enable PII detection and masking in responses",
+    )
+    pii_mask_threshold: int = Field(
+        default=3,
+        alias="STRIX_PII_MASK_THRESHOLD",
+        description="Minimum number of PII patterns to trigger automatic masking",
+    )
+
+
 class Settings(BaseSettings):
     model_config = _BASE_CONFIG
 
@@ -183,3 +249,4 @@ class Settings(BaseSettings):
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
     viewer: ViewerSettings = Field(default_factory=ViewerSettings)
+    governance: GovernanceSettings = Field(default_factory=GovernanceSettings)

@@ -18,6 +18,11 @@ from pygments.util import ClassNotFound
 
 from strix.core.paths import run_record_path
 
+try:
+    from strix.core.pii_guard import get_safety_interceptor
+except ImportError:
+    get_safety_interceptor = None
+
 
 if TYPE_CHECKING:
     from pygments.lexer import Lexer
@@ -25,6 +30,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+_SEVERITY_COLORS = {
+    "critical": "#dc2626",  # red
+    "high": "#ea580c",     # orange
+    "medium": "#ca8a04",   # yellow
+    "low": "#16a34a",      # green
+    "info": "#2563eb",     # blue
+}
+_RISK_SCORES = {
+    "critical": 9.0,
+    "high": 7.0,
+    "medium": 5.0,
+    "low": 3.0,
+    "info": 1.0,
+}
 
 _CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
@@ -136,12 +155,24 @@ def write_run_record(run_dir: Path, run_record: dict[str, Any]) -> None:
     )
 
 
-def write_executive_report(run_dir: Path, final_scan_result: str) -> None:
+def write_executive_report(run_dir: Path, final_scan_result: str, vulnerabilities: list[dict[str, Any]] | None = None) -> None:
     path = run_dir / "penetration_test_report.md"
     with path.open("w", encoding="utf-8") as f:
         f.write("# Security Penetration Test Report\n\n")
         f.write(f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
         f.write(f"{final_scan_result}\n")
+
+        # Add enterprise-ready sections if vulnerabilities are provided
+        if vulnerabilities:
+            f.write("\n---\n\n")
+            f.write(write_executive_summary(vulnerabilities))
+            f.write("\n---\n\n")
+            f.write(write_risk_assessment(vulnerabilities))
+            f.write("\n---\n\n")
+            f.write(write_findings_summary(vulnerabilities))
+            f.write("\n---\n\n")
+            f.write(write_remediation_roadmap(vulnerabilities))
+
     logger.info("Saved final penetration test report to: %s", path)
 
 
@@ -221,6 +252,14 @@ def atomic_write_text(path: Path, payload: str) -> None:
 
 
 def render_vulnerability_md(report: dict[str, Any]) -> str:  # noqa: PLR0912, PLR0915
+    # Sanitize report data for PII safety
+    safety_interceptor = get_safety_interceptor() if get_safety_interceptor else None
+    if safety_interceptor:
+        try:
+            report = safety_interceptor._sanitize_response(report)
+        except Exception as pii_exc:
+            logger.warning("PII sanitization error in report rendering: %s", pii_exc)
+
     lines: list[str] = [
         f"# {report.get('title', 'Untitled Vulnerability')}\n",
         f"**ID:** {report.get('id', 'unknown')}",
@@ -394,3 +433,188 @@ def render_update_history(history: Any) -> list[str]:
             lines.append(f"  Reason: {entry['reason']}")
         lines.append("")
     return lines
+
+
+def write_executive_summary(vulnerabilities: list[dict[str, Any]]) -> str:
+    """Write executive summary for enterprise reporting."""
+    lines = ["## Executive Summary\n\n"]
+
+    # Count vulnerabilities by severity
+    severity_counts = {}
+    for vuln in vulnerabilities:
+        severity = vuln.get("severity", "unknown").lower()
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+    total_vulns = len(vulnerabilities)
+    critical_count = severity_counts.get("critical", 0)
+    high_count = severity_counts.get("high", 0)
+
+    lines.append(f"This security assessment identified **{total_vulns} potential security issues** ")
+    lines.append(f"across the tested target(s). The findings include:\n\n")
+
+    lines.append("### Severity Breakdown\n\n")
+    for severity in ["critical", "high", "medium", "low", "info"]:
+        count = severity_counts.get(severity, 0)
+        if count > 0:
+            lines.append(f"- **{severity.upper()}**: {count} finding(s)\n")
+
+    lines.append("\n### Key Findings\n\n")
+
+    # List top critical/high findings
+    critical_high = [v for v in vulnerabilities if v.get("severity", "").lower() in ("critical", "high")]
+    for i, vuln in enumerate(critical_high[:5], 1):
+        title = vuln.get("title", "Untitled")
+        severity = vuln.get("severity", "unknown").upper()
+        lines.append(f"{i}. **[{severity}]** {title}\n")
+
+    if critical_high:
+        lines.append(f"\n### Overall Risk Assessment\n\n")
+        if critical_count > 0:
+            lines.append("The presence of **CRITICAL** severity vulnerabilities indicates ")
+            lines.append("significant security risks that require immediate attention. ")
+            lines.append("These issues could potentially lead to complete system compromise, ")
+            lines.append("data breach, or significant business impact.\n\n")
+        elif high_count > 0:
+            lines.append("The assessment identified **HIGH** severity vulnerabilities that ")
+            lines.append("should be addressed promptly. While not immediately critical, ")
+            lines.append("these issues could be exploited to cause substantial impact.\n\n")
+        else:
+            lines.append("The security posture appears reasonable with no critical or high ")
+            lines.append("severity findings. The identified issues should be addressed as part of ")
+            lines.append("routine security maintenance.\n\n")
+
+    return "".join(lines)
+
+
+def write_risk_assessment(vulnerabilities: list[dict[str, Any]]) -> str:
+    """Write detailed risk assessment with scores and root causes."""
+    lines = ["## Risk Assessment\n\n"]
+
+    lines.append("### Risk Scoring Methodology\n\n")
+    lines.append("Risk scores are calculated based on:\n")
+    lines.append("- **Exploitability**: How easily the vulnerability can be exploited\n")
+    lines.append("- **Impact**: Potential damage if exploited\n")
+    lines.append("- **Scope**: Number of systems/users affected\n")
+    lines.append("- **Data Sensitivity**: Sensitivity of data at risk\n\n")
+
+    lines.append("### Detailed Risk Analysis\n\n")
+
+    # Group by severity for risk analysis
+    for severity in ["critical", "high", "medium", "low"]:
+        severity_vulns = [v for v in vulnerabilities if v.get("severity", "").lower() == severity]
+        if not severity_vulns:
+            continue
+
+        lines.append(f"#### {severity.upper()} Severity Findings\n\n")
+        for vuln in severity_vulns:
+            title = vuln.get("title", "Untitled")
+            risk_score = _RISK_SCORES.get(severity, 0.0)
+
+            lines.append(f"**{title}**\n\n")
+            lines.append(f"- **Risk Score**: {risk_score}/10.0\n")
+            lines.append(f"- **Exploitability**: {vuln.get('confidence', 'unknown').title()}\n")
+
+            if vuln.get("impact"):
+                lines.append(f"- **Business Impact**: {str(vuln['impact'])[:200]}...\n")
+
+            if vuln.get("technical_analysis"):
+                lines.append(f"- **Technical Root Cause**: {str(vuln['technical_analysis'])[:200]}...\n")
+
+            lines.append("\n")
+
+    return "".join(lines)
+
+
+def write_findings_summary(vulnerabilities: list[dict[str, Any]]) -> str:
+    """Write comprehensive findings summary."""
+    lines = ["## Detailed Findings Summary\n\n"]
+
+    # Sort by severity
+    sorted_vulns = sorted(
+        vulnerabilities,
+        key=lambda v: (_SEVERITY_ORDER.get(v.get("severity", "").lower(), 5), v.get("timestamp", ""))
+    )
+
+    lines.append(f"**Total Findings**: {len(sorted_vulns)}\n\n")
+
+    for i, vuln in enumerate(sorted_vulns, 1):
+        title = vuln.get("title", "Untitled")
+        severity = vuln.get("severity", "unknown").upper()
+        vuln_id = vuln.get("id", "unknown")
+        timestamp = vuln.get("timestamp", "unknown")
+
+        lines.append(f"### {i}. {title}\n\n")
+        lines.append(f"- **ID**: {vuln_id}\n")
+        lines.append(f"- **Severity**: {severity}\n")
+        lines.append(f"- **Discovered**: {timestamp}\n")
+
+        if vuln.get("description"):
+            lines.append(f"- **Description**: {str(vuln['description'])[:300]}...\n")
+
+        if vuln.get("endpoint"):
+            lines.append(f"- **Affected Endpoint**: {vuln.get('endpoint')}\n")
+
+        if vuln.get("cve"):
+            lines.append(f"- **CVE**: {vuln.get('cve')}\n")
+
+        lines.append("\n")
+
+    return "".join(lines)
+
+
+def write_remediation_roadmap(vulnerabilities: list[dict[str, Any]]) -> str:
+    """Write prioritized remediation roadmap."""
+    lines = ["## Remediation Roadmap\n\n"]
+
+    lines.append("### Prioritization Framework\n\n")
+    lines.append("Remediation priorities are based on:\n")
+    lines.append("1. **Risk Score**: Higher-severity issues first\n")
+    lines.append("2. **Exploitability**: Easily exploitable issues prioritized\n")
+    lines.append("3. **Business Impact**: Issues with high business impact\n")
+    lines.append("4. **Fix Effort**: Quick wins prioritized alongside critical issues\n\n")
+
+    lines.append("### Immediate Actions (Critical/High)\n\n")
+
+    critical_high = [v for v in vulnerabilities if v.get("severity", "").lower() in ("critical", "high")]
+    for i, vuln in enumerate(critical_high, 1):
+        title = vuln.get("title", "Untitled")
+        severity = vuln.get("severity", "unknown").upper()
+        fix_effort = vuln.get("fix_effort", "unknown").title()
+
+        lines.append(f"{i}. **[{severity}]** {title}\n")
+        lines.append(f"   - **Estimated Effort**: {fix_effort}\n")
+
+        if vuln.get("remediation_steps"):
+            lines.append(f"   - **Remediation**: {str(vuln['remediation_steps'])[:200]}...\n")
+
+        lines.append("\n")
+
+    lines.append("### Short-term Actions (Medium)\n\n")
+
+    medium_vulns = [v for v in vulnerabilities if v.get("severity", "").lower() == "medium"]
+    for i, vuln in enumerate(medium_vulns[:5], 1):  # Limit to top 5 medium
+        title = vuln.get("title", "Untitled")
+        fix_effort = vuln.get("fix_effort", "unknown").title()
+
+        lines.append(f"{i}. **[MEDIUM]** {title}\n")
+        lines.append(f"   - **Estimated Effort**: {fix_effort}\n")
+
+        if vuln.get("remediation_steps"):
+            lines.append(f"   - **Remediation**: {str(vuln['remediation_steps'])[:150]}...\n")
+
+        lines.append("\n")
+
+    lines.append("### Long-term Actions (Low/Info)\n\n")
+
+    low_info = [v for v in vulnerabilities if v.get("severity", "").lower() in ("low", "info")]
+    if low_info:
+        lines.append(f"Address {len(low_info)} lower-priority findings as part of routine security maintenance.\n\n")
+
+    lines.append("### Verification and Validation\n\n")
+    lines.append("For each remediation:\n")
+    lines.append("1. **Apply Fix**: Implement the recommended remediation\n")
+    lines.append("2. **Test Verification**: Re-scan to verify the fix\n")
+    lines.append("3. **Regression Test**: Ensure no new vulnerabilities introduced\n")
+    lines.append("4. **Documentation**: Update security documentation\n\n")
+
+    return "".join(lines)

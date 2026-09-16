@@ -223,6 +223,52 @@ Strix Cloud:
     )
 
     parser.add_argument(
+        "--environment-mode",
+        type=str,
+        choices=["local_lab", "public_target"],
+        default=None,
+        help=(
+            "Operating environment mode: "
+            "'local_lab' for full authority testing (aggressive fuzzing, custom scripts, container escapes), "
+            "'public_target' for strict rate-limited validation only (2-5 req/sec, non-destructive). "
+            "Default: from STRIX_ENVIRONMENT_MODE or 'local_lab'."
+        ),
+    )
+
+    parser.add_argument(
+        "--require-scope-confirmation",
+        action="store_true",
+        default=None,
+        help=(
+            "Require explicit scope confirmation before testing any asset in public target mode. "
+            "Default: from STRIX_REQUIRE_SCOPE_CONFIRMATION or True."
+        ),
+    )
+
+    parser.add_argument(
+        "--authorized-target",
+        type=str,
+        action="append",
+        metavar="TARGET",
+        help=(
+            "Pre-authorized target for public target mode (URL, domain, IP, or pattern like *.example.com). "
+            "Can be specified multiple times. "
+            "Default: from STRIX_AUTHORIZED_TARGETS."
+        ),
+    )
+
+    parser.add_argument(
+        "--evidence-vault",
+        type=str,
+        metavar="PATH",
+        help=(
+            "Base path for local evidence vault storage. "
+            "Engagement artifacts will be stored in {path}/{engagement}_{target}/. "
+            "Default: from STRIX_EVIDENCE_VAULT_PATH or '~/local-sec-vault'."
+        ),
+    )
+
+    parser.add_argument(
         "--config",
         type=str,
         help="Path to a custom config file (JSON) to use instead of ~/.strix/cli-config.json",
@@ -464,3 +510,13 @@ def _load_resume_state(args: argparse.Namespace, parser: argparse.ArgumentParser
     persisted_scan_mode = state.get("scan_mode")
     if persisted_scan_mode and args.scan_mode == "deep":
         args.scan_mode = persisted_scan_mode
+
+    # Apply governance-related environment variables from CLI arguments
+    if args.environment_mode:
+        os.environ["STRIX_ENVIRONMENT_MODE"] = args.environment_mode
+    if args.require_scope_confirmation is not None:
+        os.environ["STRIX_REQUIRE_SCOPE_CONFIRMATION"] = str(args.require_scope_confirmation)
+    if args.authorized_target:
+        os.environ["STRIX_AUTHORIZED_TARGETS"] = ",".join(args.authorized_target)
+    if args.evidence_vault:
+        os.environ["STRIX_EVIDENCE_VAULT_PATH"] = args.evidence_vault
